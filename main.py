@@ -53,7 +53,7 @@ class LED_8SEG():
         time.sleep(0.002)
         self.rclk(1)
 
-def sync_time():
+def sync_time(led):
     """Sync time over NTP"""
     rtc = RTC()
     try:
@@ -61,12 +61,20 @@ def sync_time():
         wifi = network.WLAN(network.STA_IF)
         wifi.active(True)
         wifi.connect(SSID, WIFI_PASSWORD)
-        time.sleep(5)  # Wait for connection
+        # time.sleep(5)  # Wait for connection
+
+        display_loading(led, 5)
+
         if wifi.isconnected():
             ntptime.settime()
-        print("Time synced")
+            print("Time synced")
+            return True
+        else:
+            return False
+
     except ImportError:
         print("WARNING: Could not sync device's clock: NTP not available")
+        return False
 
 def update_display(led, hours, minutes, dot) -> None:
     """Displays the time on the 7seg display"""
@@ -74,6 +82,20 @@ def update_display(led, hours, minutes, dot) -> None:
     led.write_cmd(TENS, led.SEG8[minutes // 10])
     led.write_cmd(HUNDREDS, led.SEG8[hours % 10] | dot)
     led.write_cmd(THOUSANDS, led.SEG8[hours // 10])
+
+def display_error(led) -> None:
+    led.write_cmd(ONES, led.SEG8[14])
+    led.write_cmd(TENS, led.SEG8[14])
+    led.write_cmd(HUNDREDS, led.SEG8[14])
+    led.write_cmd(THOUSANDS, led.SEG8[14])
+
+def display_loading(led, duration) -> None:
+    SPEED = 6
+    cells = [THOUSANDS, HUNDREDS, TENS, ONES]
+    
+    for i in range(duration * SPEED):
+        led.write_cmd(cells[i % 4], 0x80)
+        time.sleep(1 / SPEED)
 
 def seconds_since_midnight_cest(cest_time) -> int:
     seconds = cest_time[3] * 3600 + cest_time[4] * 60 + cest_time[5]
@@ -95,9 +117,13 @@ def get_cest_time():
     return cest_time
 
 def main():
-    sync_time()
-
     led = LED_8SEG()
+    
+    if not sync_time(led) :
+        while True:
+            display_error(led)
+            time.sleep(0.001)
+
     
     while True:
         now = time.time()
@@ -106,12 +132,11 @@ def main():
         next_tick = now - (now % 1) + 1
 
         # Get current time, account for timezone as local time isn't local
-        current_time = get_cest_time()
         SI_seconds = seconds_since_midnight_cest(get_cest_time())
         D_seconds = int(SI_seconds / 0.864)
         hours = D_seconds // 10000
         minutes = D_seconds // 100 % 100
-        print(f"DEBUG\nSI seconds since midnight: {SI_seconds}\nDecimal seconds since midnight: {D_seconds}\nDecimal minutes: {minutes}\nDecimal hours: {hours}\n")
+        # print(f"DEBUG\nSI seconds since midnight: {SI_seconds}\nDecimal seconds since midnight: {D_seconds}\nDecimal minutes: {minutes}\nDecimal hours: {hours}\n")
         # Dot is lit up on even seconds
         dot = Dot if (SI_seconds % 2 == 0) else 0
 
