@@ -83,7 +83,7 @@ def get_cest_time():
     t = time.localtime()  # Get UTC time from RTC
 
     # Adjust for CEST (UTC+2)
-    cest_hour = t[3] + 1
+    cest_hour = t[3] + 2
     day = t[2]
 
     # Handle overflow past 24:00
