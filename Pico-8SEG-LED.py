@@ -53,7 +53,7 @@ class LED_8SEG():
         time.sleep(0.002)
         self.rclk(1)
 
-def sync_time(ssid, password):
+def sync_time():
     """Sync time over NTP"""
     rtc = RTC()
     try:
@@ -64,49 +64,61 @@ def sync_time(ssid, password):
         time.sleep(5)  # Wait for connection
         if wifi.isconnected():
             ntptime.settime()
+        print("Time synced")
     except ImportError:
         print("WARNING: Could not sync device's clock: NTP not available")
 
-def update_display(led, hours, minutes, dot):
-    """Aktualizuje zobrazení LED displeje."""
+def update_display(led, hours, minutes, dot) -> None:
+    """Displays the time on the 7seg display"""
     led.write_cmd(ONES, led.SEG8[minutes % 10])
     led.write_cmd(TENS, led.SEG8[minutes // 10])
     led.write_cmd(HUNDREDS, led.SEG8[hours % 10] | dot)
     led.write_cmd(THOUSANDS, led.SEG8[hours // 10])
 
+def seconds_since_midnight_cest(cest_time) -> int:
+    seconds = cest_time[3] * 3600 + cest_time[4] * 60 + cest_time[5]
+    return seconds
+
+def get_cest_time():
+    t = time.localtime()  # Get UTC time from RTC
+
+    # Adjust for CEST (UTC+2)
+    cest_hour = t[3] + 1
+    day = t[2]
+
+    # Handle overflow past 24:00
+    if cest_hour >= 24:
+        cest_hour -= 24
+        day += 1  # Move to next day
+
+    cest_time = (t[0], t[1], day, cest_hour, t[4], t[5], t[6], t[7])
+    return cest_time
+
 def main():
-    # Synchronizuj čas pomocí NTP
-    sync_time("ssid", "password")
-    TIMEZONE_OFFSET = 1  # Nastav časové pásmo
+    sync_time()
 
     led = LED_8SEG()
     
     while True:
         now = time.time()
-        # Vypočítej okamžik začátku další sekundy
+        
+        # Calculate beginning of next second
         next_tick = now - (now % 1) + 1
 
-        # Získej aktuální čas s korekcí časového pásma
-        current_time = time.localtime(now)
-        hours = (current_time[3] + TIMEZONE_OFFSET) % 24
-        minutes = current_time[4]
-        seconds = current_time[5]
-        # Tečka bliká synchronizovaně se sekundami (bliká, když je sekunda sudá)
-        dot = Dot if (seconds % 2 == 0) else 0
+        # Get current time, account for timezone as local time isn't local
+        current_time = get_cest_time()
+        SI_seconds = seconds_since_midnight_cest(get_cest_time())
+        D_seconds = int(SI_seconds / 0.864)
+        hours = D_seconds // 10000
+        minutes = D_seconds // 100 % 100
+        print(f"DEBUG\nSI seconds since midnight: {SI_seconds}\nDecimal seconds since midnight: {D_seconds}\nDecimal minutes: {minutes}\nDecimal hours: {hours}\n")
+        # Dot is lit up on even seconds
+        dot = Dot if (SI_seconds % 2 == 0) else 0
 
-        # Obnovuj displej až do začátku další sekundy
+        # Refresh the display until the next second
         while time.time() < next_tick:
             update_display(led, hours, minutes, dot)
-            time.sleep(0.01)  # malá prodleva, aby se CPU nezahltilo
+            time.sleep(0.001)
 
 if __name__ == '__main__':
     main()
-
-                            
-            
-        
-
-
-
-
-
